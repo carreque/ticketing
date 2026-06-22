@@ -1,0 +1,22 @@
+# Design assets (not part of the codebase)
+screenshotsConventions/
+ticketing.drawio
+.$ticketing.drawio.bkp
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Terraform build artifacts & state
+terraform/build/
+terraform/dist/
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+
+# Secrets / credentials
+.env
+*.pem

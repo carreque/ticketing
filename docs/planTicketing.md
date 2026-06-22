@@ -207,7 +207,7 @@ git commit -m "chore: project scaffold, deps, and pytest+moto harness"
 - Test: `tests/unit/test_models.py`
 
 **Interfaces:**
-- Produces: `Priority(str, Enum)` with members `low|medium|high|critical`; `Status(str, Enum)` with members `open|in_progress|resolved`; `TicketCreate` (fields `priority: Priority`, `description: str`, `requestingArea: str`, `reportedBy: str`; rejects extra/missing/blank). Consumed by Task 5 (`createTicket`) and Task 6 (`getTicket` validates the `status` query param against `Status`).
+- Produces: `Priority(str, Enum)` with members `low|medium|high|critical`; `Status(str, Enum)` with members `open|in_progress|resolved`; `Ticket` (fields `priority: Priority`, `description: str`, `requestingArea: str`, `reportedBy: str`; rejects extra/missing/blank). Consumed by Task 5 (`createTicket`) and Task 6 (`getTicket` validates the `status` query param against `Status`).
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -216,11 +216,11 @@ git commit -m "chore: project scaffold, deps, and pytest+moto harness"
 import pytest
 from pydantic import ValidationError
 
-from common.models import Priority, Status, TicketCreate
+from common.models import Priority, Status, Ticket
 
 
 def test_valid_ticket_create():
-    t = TicketCreate(
+    t = Ticket(
         priority="high", description="Printer down",
         requestingArea="Finance", reportedBy="jdoe",
     )
@@ -234,17 +234,17 @@ def test_status_enum_values():
 
 def test_invalid_priority_rejected():
     with pytest.raises(ValidationError):
-        TicketCreate(priority="urgent", description="x", requestingArea="IT", reportedBy="a")
+        Ticket(priority="urgent", description="x", requestingArea="IT", reportedBy="a")
 
 
 def test_missing_field_rejected():
     with pytest.raises(ValidationError):
-        TicketCreate(priority="low", description="x", requestingArea="IT")
+        Ticket(priority="low", description="x", requestingArea="IT")
 
 
 def test_extra_field_rejected():
     with pytest.raises(ValidationError):
-        TicketCreate(
+        Ticket(
             priority="low", description="x", requestingArea="IT",
             reportedBy="a", status="open",
         )
@@ -252,7 +252,7 @@ def test_extra_field_rejected():
 
 def test_blank_description_rejected():
     with pytest.raises(ValidationError):
-        TicketCreate(priority="low", description="", requestingArea="IT", reportedBy="a")
+        Ticket(priority="low", description="", requestingArea="IT", reportedBy="a")
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -270,22 +270,26 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class Priority(str, Enum):
-    low = "low"
-    medium = "medium"
-    high = "high"
-    critical = "critical"
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
 
 
 class Status(str, Enum):
-    open = "open"
-    in_progress = "in_progress"
-    resolved = "resolved"
+    OPEN = "open"
+    IN_PROGRESS = "in_progress"
+    RESOLVED = "resolved"
 
 
-class TicketCreate(BaseModel):
+class Ticket(BaseModel):
     """Client-supplied fields for POST /tickets. Server fields are not accepted here."""
 
-    model_config = ConfigDict(extra="forbid")
+    """
+    class-level setting that controls how unknown keys are handled. extra="forbid" means any
+    field not declared here causes a validation error.
+    """
+    model_config = ConfigDict(extra="forbid") 
 
     priority: Priority
     description: str = Field(min_length=1, max_length=2000)
@@ -527,7 +531,7 @@ git commit -m "feat: DynamoDB repository with status-index query and pagination"
 - Test: `tests/unit/test_create_handler.py`
 
 **Interfaces:**
-- Consumes: `TicketCreate`, `Status` (Task 2); `response`, `error` (Task 3); `TicketRepository` (Task 4).
+- Consumes: `Ticket`, `Status` (Task 2); `response`, `error` (Task 3); `TicketRepository` (Task 4).
 - Produces: `handler(event, context) -> dict`. Reads `event["body"]` (JSON string). On success: generates `id` (ULID), `createdAt` (ISO-8601 UTC), `status="open"`, writes via `repo.put`, publishes the ticket JSON to `SNS_TOPIC_ARN` (skipped if unset), returns **201** with the ticket. Errors: **400** `invalid_json` on unparseable body, **400** `validation_error` on schema failure. Module global `repo` (a `TicketRepository`) is reassignable by tests.
 
 - [ ] **Step 1: Write the failing tests**
@@ -614,7 +618,7 @@ from aws_lambda_powertools import Logger
 from pydantic import ValidationError
 from ulid import ULID
 
-from common.models import Status, TicketCreate
+from common.models import Status, Ticket
 from common.repository import TicketRepository
 from common.responses import error, response
 
@@ -633,7 +637,7 @@ def handler(event, context):
         return error(400, "invalid_json", "Request body is not valid JSON")
 
     try:
-        data = TicketCreate.model_validate(body)
+        data = Ticket.model_validate(body)
     except ValidationError as exc:
         fields = ", ".join(".".join(str(p) for p in e["loc"]) for e in exc.errors())
         logger.warning("validation failed", extra={"fields": fields})
@@ -642,7 +646,7 @@ def handler(event, context):
     ticket = {
         "id": str(ULID()),
         "createdAt": datetime.now(timezone.utc).isoformat(),
-        "status": Status.open.value,
+        "status": Status.OPEN.value,
         "priority": data.priority.value,
         "description": data.description,
         "requestingArea": data.requestingArea,

@@ -17,6 +17,7 @@
 - **IAM:** least privilege — `createTicket` gets only `dynamodb:PutItem` + `sns:Publish` + scoped logs; `getTicket` gets only `dynamodb:GetItem`/`Query` + scoped logs. No `logs:*`; use `logs:CreateLogStream` + `logs:PutLogEvents` scoped to each function's log group.
 - **Error envelope:** all error responses are JSON `{"error": <code>, "message": <text>}`. No stack traces or internal details leaked to clients.
 - **Pagination:** DynamoDB `LastEvaluatedKey` is exposed to clients only as an opaque base64 `cursor` / `nextCursor`.
+- **Terraform testing (TDD):** infrastructure is unit-tested with native `terraform test` (`*.tftest.hcl` files in `terraform/tests/`) using `mock_provider "aws" {}`, so tests run offline at `command = plan` with no AWS credentials and no cost. Each Terraform task is test-first: write the failing `.tftest.hcl` → `terraform test` (RED) → write the `.tf` → `terraform test` (GREEN). Assertions target **statically-configured** attributes (resource names, billing mode, GSI name, IAM statements, projection type) — not apply-time computed values (ARNs/IDs), which are non-deterministic under a mock provider. `terraform fmt -check` + `terraform validate` remain as static gates alongside the tests.
 
 ---
 
@@ -59,6 +60,9 @@ ticketing/
     cognito.tf
     apigw.tf                       # HTTP API + JWT authorizer + routes + permissions
     outputs.tf
+    tests/                         # native `terraform test` unit tests (mock_provider, offline)
+      dynamodb.tftest.hcl          # table + GSI invariants (Task 7)
+      sns.tftest.hcl               # topic + email subscription invariants (Task 7)
 ```
 
 **Responsibility boundaries:** `common/` is pure, cloud-aware-but-injectable logic (testable with moto, no API Gateway coupling). Each handler is a thin adapter: parse event → call common → format response. Terraform files split by service so each change set is reviewable in isolation.
@@ -818,6 +822,8 @@ git commit -m "feat: getTicket handler (get-by-id and status query with paginati
 ## Task 7: Terraform foundation — providers, variables, DynamoDB, SNS
 
 **Files:**
+- Create: `terraform/tests/dynamodb.tftest.hcl`
+- Create: `terraform/tests/sns.tftest.hcl`
 - Create: `terraform/main.tf`
 - Create: `terraform/variables.tf`
 - Create: `terraform/dynamodb.tf`
@@ -826,7 +832,99 @@ git commit -m "feat: getTicket handler (get-by-id and status query with paginati
 **Interfaces:**
 - Produces (referenced by later Terraform tasks): `aws_dynamodb_table.tickets` (`.arn`, `.name`); `aws_sns_topic.tickets` (`.arn`); `data.aws_caller_identity.current`; `data.aws_region.current`; vars `project_name`, `aws_region`, `support_email`.
 
-- [ ] **Step 1: Create `terraform/main.tf`**
+- [ ] **Step 1: Write the failing tests**
+
+`terraform/tests/dynamodb.tftest.hcl`:
+```hcl
+# Unit tests for the DynamoDB table + GSI (Task 7).
+# mock_provider => runs offline at plan time, no AWS credentials or cost.
+mock_provider "aws" {}
+
+variables {
+  support_email = "test@example.com"
+}
+
+run "table_name_billing_and_key" {
+  command = plan
+
+  assert {
+    condition     = aws_dynamodb_table.tickets.name == "ticketing-tickets"
+    error_message = "Table name must be <project_name>-tickets"
+  }
+  assert {
+    condition     = aws_dynamodb_table.tickets.billing_mode == "PAY_PER_REQUEST"
+    error_message = "Table must use on-demand (PAY_PER_REQUEST) billing"
+  }
+  assert {
+    condition     = aws_dynamodb_table.tickets.hash_key == "id"
+    error_message = "Partition key must be id"
+  }
+}
+
+run "gsi_matches_status_createdat_index" {
+  command = plan
+
+  assert {
+    condition     = one(aws_dynamodb_table.tickets.global_secondary_index).name == "status-createdAt-index"
+    error_message = "GSI name must be status-createdAt-index (kept in sync with repository/IAM/conftest)"
+  }
+  assert {
+    condition     = one(aws_dynamodb_table.tickets.global_secondary_index).hash_key == "status"
+    error_message = "GSI partition key must be status"
+  }
+  assert {
+    condition     = one(aws_dynamodb_table.tickets.global_secondary_index).range_key == "createdAt"
+    error_message = "GSI sort key must be createdAt"
+  }
+  assert {
+    condition     = one(aws_dynamodb_table.tickets.global_secondary_index).projection_type == "ALL"
+    error_message = "GSI projection type must be ALL"
+  }
+}
+```
+
+`terraform/tests/sns.tftest.hcl`:
+```hcl
+# Unit tests for the SNS topic + email subscription (Task 7).
+mock_provider "aws" {}
+
+variables {
+  support_email = "support@example.com"
+}
+
+run "topic_name" {
+  command = plan
+
+  assert {
+    condition     = aws_sns_topic.tickets.name == "ticketing-notifications"
+    error_message = "SNS topic name must be <project_name>-notifications"
+  }
+}
+
+run "email_subscription_targets_support_email" {
+  command = plan
+
+  assert {
+    condition     = aws_sns_topic_subscription.support_email.protocol == "email"
+    error_message = "Support subscription must use the email protocol"
+  }
+  assert {
+    condition     = aws_sns_topic_subscription.support_email.endpoint == "support@example.com"
+    error_message = "Support subscription endpoint must equal var.support_email"
+  }
+}
+```
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run (from `terraform/`):
+```bash
+terraform init -backend=false
+terraform test
+```
+Expected: FAIL (`0 passed`) with `Error: unknown provider registry.terraform.io/hashicorp/aws` for both files — with no `.tf` config yet, nothing declares the `aws` provider, so `mock_provider "aws"` cannot bind and terraform errors before reaching the resource assertions. This is the RED state. (Once `main.tf` declares `required_providers.aws` and `dynamodb.tf`/`sns.tf` define the resources in Steps 3–6, the same runs go GREEN.)
+
+- [ ] **Step 3: Create `terraform/main.tf`**
 
 ```hcl
 terraform {
@@ -857,7 +955,7 @@ data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 ```
 
-- [ ] **Step 2: Create `terraform/variables.tf`**
+- [ ] **Step 4: Create `terraform/variables.tf`**
 
 ```hcl
 variable "project_name" {
@@ -878,7 +976,7 @@ variable "support_email" {
 }
 ```
 
-- [ ] **Step 3: Create `terraform/dynamodb.tf`**
+- [ ] **Step 5: Create `terraform/dynamodb.tf`**
 
 ```hcl
 resource "aws_dynamodb_table" "tickets" {
@@ -914,7 +1012,7 @@ resource "aws_dynamodb_table" "tickets" {
 }
 ```
 
-- [ ] **Step 4: Create `terraform/sns.tf`**
+- [ ] **Step 6: Create `terraform/sns.tf`**
 
 ```hcl
 resource "aws_sns_topic" "tickets" {
@@ -928,22 +1026,22 @@ resource "aws_sns_topic_subscription" "support_email" {
 }
 ```
 
-- [ ] **Step 5: Initialize and validate**
+- [ ] **Step 7: Validate and run the tests (GREEN)**
 
 Run:
 ```bash
 cd terraform
-terraform init -backend=false
 terraform fmt -check
 terraform validate
+terraform test
 ```
-Expected: `terraform fmt -check` prints nothing (formatted); `terraform validate` prints `Success! The configuration is valid.` (`terraform init` downloads providers; no AWS credentials required for validate.)
+Expected: `terraform fmt -check` prints nothing (formatted); `terraform validate` prints `Success! The configuration is valid.`; `terraform test` reports all runs passing. (`terraform init` downloads providers; no AWS credentials required for validate/test — the tests use `mock_provider`.)
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add terraform/main.tf terraform/variables.tf terraform/dynamodb.tf terraform/sns.tf
-git commit -m "feat(infra): providers, variables, DynamoDB table+GSI, SNS topic"
+git add terraform/tests terraform/main.tf terraform/variables.tf terraform/dynamodb.tf terraform/sns.tf
+git commit -m "feat(infra): providers, variables, DynamoDB table+GSI, SNS topic (+terraform tests)"
 ```
 
 ---

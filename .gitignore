@@ -13,6 +13,7 @@ __pycache__/
 terraform/build/
 terraform/dist/
 .terraform/
+.terraform.lock.hcl
 *.tfstate
 *.tfstate.*
 *.tfvars

@@ -1,6 +1,14 @@
 # Unit tests for the DynamoDB table + GSI (Task 7).
 # mock_provider => runs offline at plan time, no AWS credentials or cost.
-mock_provider "aws" {}
+# mock_data supplies a valid IAM policy json so the iam.tf roles (now part of the
+# root module) plan without failing assume_role_policy JSON validation.
+mock_provider "aws" {
+  mock_data "aws_iam_policy_document" {
+    defaults = {
+      json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}"
+    }
+  }
+}
 
 variables {
   support_email = "test@example.com"

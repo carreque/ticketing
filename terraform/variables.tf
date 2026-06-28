@@ -18,5 +18,5 @@ variable "support_email" {
 variable "powertools_layer_arn" {
   type        = string
   description = "ARN of the AWS-managed Lambda Powertools (Python) layer for the deploy region/arch."
-  default     = "arn:aws:lambda:us-east-1:017000801446:layer:AWSLambdaPowertoolsPythonV3-python313-x86_64:3"
+  default     = "arn:aws:lambda:us-east-1:017000801446:layer:AWSLambdaPowertoolsPythonV3-python313-x86_64:34"
 }

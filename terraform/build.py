@@ -9,8 +9,8 @@ BUILD = os.path.join(ROOT, "build")
 REQUIREMENTS = os.path.join(ROOT, "..", "requirements.txt")
 
 FUNCS = {
-    "create_ticket": ["create_ticket", "common"],
-    "get_ticket": ["get_ticket", "common"],
+    "create_ticket": ["create_ticket", "common", "exceptions"],
+    "get_ticket": ["get_ticket", "common", "exceptions"],
 }
 
 

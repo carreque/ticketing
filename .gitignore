@@ -27,3 +27,6 @@ docs/Session*.md
 
 # Explanation notes (local working notes, not part of the codebase)
 docs/explanation*.md
+
+# Issue write-ups (local working notes, not part of the codebase)
+docs/issues/

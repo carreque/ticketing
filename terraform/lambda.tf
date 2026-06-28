@@ -25,7 +25,8 @@ resource "null_resource" "build" {
   }
 
   provisioner "local-exec" {
-    command = "${path.module}/../.venv/Scripts/python.exe ${path.module}/build.py"
+    interpreter = ["PowerShell", "-Command"]
+    command     = "& '${path.module}/../.venv/Scripts/python.exe' '${path.module}/build.py'"
   }
 }
 

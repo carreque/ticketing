@@ -6,12 +6,17 @@ Run after `terraform apply`:
     python scripts/gen_env.py
 
 Reads `terraform output -json` from the `terraform/` directory and writes the
-five stack values local tooling/tests need. Overwrites `.env` silently; `.env`
-is gitignored so it never reaches git.
+stack values local tooling/tests need. It also generates a random
+TICKET_USERNAME/TICKET_PASSWORD and writes an empty TICKET_TOKEN - creating the
+Cognito user and minting the token is left to the user (see the README / the
+create-ticket skill). Overwrites `.env` silently; `.env` is gitignored so it
+never reaches git.
 """
 import json
 import os
+import secrets
 import shutil
+import string
 import subprocess
 import sys
 from pathlib import Path
@@ -31,7 +36,7 @@ OUTPUT_MAP = {
     "user_pool_id": "USER_POOL_ID",
     "user_pool_client_id": "USER_POOL_CLIENT_ID",
     "sns_topic_arn": "SNS_TOPIC_ARN",
-    "dynamodb_table": "DYNAMODB_TABLE",
+    "dynamodb_table": "DYNAMODB_TABLE"
 }
 
 
@@ -78,6 +83,38 @@ def build_env(outputs):
     return env
 
 
+def random_username():
+    """A fresh, unique-ish plain username (the pool has no email alias)."""
+    return "ticket-" + secrets.token_hex(6)
+
+
+def random_password(length=16):
+    """Alphanumeric password satisfying the pool policy (>=8, upper+lower+digit).
+
+    Alphanumeric on purpose: no ',' or '=' so it stays a single safe token
+    inside `--auth-parameters USERNAME=..,PASSWORD=..`.
+    """
+    alphabet = string.ascii_letters + string.digits
+    while True:
+        pw = "".join(secrets.choice(alphabet) for _ in range(length))
+        if (any(c.islower() for c in pw)
+                and any(c.isupper() for c in pw)
+                and any(c.isdigit() for c in pw)):
+            return pw
+
+
+def add_ticket_credentials(env):
+    """Append a random TICKET_USERNAME/TICKET_PASSWORD and an empty TICKET_TOKEN.
+
+    We deliberately do not authenticate here: the random user does not yet exist
+    in Cognito. Creating the user (with a permanent password) and minting the
+    TICKET_TOKEN is the user's responsibility.
+    """
+    env["TICKET_USERNAME"] = random_username()
+    env["TICKET_PASSWORD"] = random_password()
+    env["TICKET_TOKEN"] = ""
+
+
 def render_env(env):
     """Render the .env file contents (header + KEY=value lines)."""
     lines = [HEADER] + [f"{key}={value}" for key, value in env.items()]
@@ -92,6 +129,7 @@ def fail(message):
 def main(env_path=ENV_PATH):
     outputs = read_outputs()
     env = build_env(outputs)
+    add_ticket_credentials(env)
     Path(env_path).write_text(render_env(env), encoding="utf-8")
     print(f"Wrote {len(env)} values to {env_path}")
 

@@ -3,6 +3,9 @@ screenshotsConventions/
 ticketing.drawio
 .$ticketing.drawio.bkp
 
+# Video demos (not part of the codebase)
+video/
+
 # Python
 .venv/
 __pycache__/

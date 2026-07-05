@@ -85,16 +85,19 @@ def region_from(env: dict) -> str:
 
 def get_token(env: dict) -> str:
     """Reuse TICKET_TOKEN if provided, else exchange username/password for an
-    IdToken via Cognito USER_PASSWORD_AUTH (an unauthenticated public flow)."""
-    token = os.environ.get("TICKET_TOKEN")
+    IdToken via Cognito USER_PASSWORD_AUTH (an unauthenticated public flow).
+
+    Credentials are read from the .env values (env), with any matching real
+    environment variable taking precedence so a per-call override still works."""
+    token = os.environ.get("TICKET_TOKEN") or env.get("TICKET_TOKEN")
     if token:
         return token.removeprefix("Bearer ").strip()
 
-    username = os.environ.get("TICKET_USERNAME")
-    password = os.environ.get("TICKET_PASSWORD")
+    username = os.environ.get("TICKET_USERNAME") or env.get("TICKET_USERNAME")
+    password = os.environ.get("TICKET_PASSWORD") or env.get("TICKET_PASSWORD")
     if not username or not password:
         fail("no credentials - set TICKET_USERNAME and TICKET_PASSWORD (or "
-             "TICKET_TOKEN with a pre-obtained IdToken).")
+             "TICKET_TOKEN with a pre-obtained IdToken) in .env or the environment.")
 
     client_id = env.get("USER_POOL_CLIENT_ID")
     if not client_id:

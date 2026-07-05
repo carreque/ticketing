@@ -71,8 +71,10 @@ needs credentials to mint the JWT, resolved in this order:
 - `TICKET_USERNAME` + `TICKET_PASSWORD` — exchanged for an IdToken via Cognito
   `USER_PASSWORD_AUTH`. This is the normal path.
 
-These are secrets — they come from the environment, never from arguments or the repo,
-and the script never prints them. If both are missing, tell the user to export them,
+All three credential values are read from the same repo-root `.env`; a matching real
+environment variable, if present, overrides the `.env` value for that call. These are
+secrets — the script never prints them, and `.env` must stay out of version control. If
+none are set in either place, tell the user to add them to `.env` or export them,
 e.g. (PowerShell) `$env:TICKET_USERNAME="demo@example.com"; $env:TICKET_PASSWORD="..."`.
 The README's "Get a JWT" section shows how to create a demo user with a permanent
 password (a permanent password matters — otherwise Cognito returns a challenge instead

@@ -1,5 +1,5 @@
 
-support_email = ""
+support_email = "carreque45@gmail.com"
 
 # AWS-managed Powertools (Python) layer, pinned for us-east-1 / python3.13 / x86_64.
 # Version is region-specific; :3 was never published (use a currently-accessible version).

@@ -44,7 +44,7 @@ they cause a 400. Enum values are lowercase.
 3. **Run the script** from the repo root:
 
    ```bash
-   python SKILLS/create-ticket/scripts/create_ticket.py \
+   python .claude/skills/create-ticket/scripts/create_ticket.py \
      --priority high \
      --description "VPN down for the whole Finance floor" \
      --requesting-area Finance \
@@ -52,7 +52,7 @@ they cause a 400. Enum values are lowercase.
    ```
 
    On Windows use the project venv interpreter if a bare `python` isn't the 3.13 env:
-   `.venv/Scripts/python.exe SKILLS/create-ticket/scripts/create_ticket.py ...`.
+   `.venv\Scripts\python.exe .claude\skills\create-ticket\scripts\create_ticket.py ...`.
 
 4. **Report the result.** On success the script prints the new `id`, `status`, and
    `createdAt` — relay the `id` to the user, since that's what they'll use to query the
@@ -64,28 +64,43 @@ they cause a 400. Enum values are lowercase.
 
 The script reads the repo-root `.env` (produced by `scripts/gen_env.py` after
 `terraform apply`) for `API_BASE_URL`, `USER_POOL_CLIENT_ID`, and `USER_POOL_ID`. It
-needs credentials to mint the JWT, resolved in this order:
+manages the JWT for you — you don't need to obtain one by hand:
 
-- `TICKET_TOKEN` — a pre-obtained Cognito **IdToken** (with or without a `Bearer `
-  prefix). If set, auth is skipped entirely.
-- `TICKET_USERNAME` + `TICKET_PASSWORD` — exchanged for an IdToken via Cognito
-  `USER_PASSWORD_AUTH`. This is the normal path.
+- `TICKET_TOKEN` — a Cognito **IdToken** (with or without a `Bearer ` prefix). It's
+  reused **only if it hasn't expired** (a local `exp` check, no network). If it's
+  missing, expired, or malformed, the script mints a fresh one.
+- `TICKET_USERNAME` + `TICKET_PASSWORD` — exchanged for a fresh IdToken via Cognito
+  `USER_PASSWORD_AUTH` whenever a valid `TICKET_TOKEN` isn't available. The new token
+  is **written back into `.env` under `TICKET_TOKEN`**, so later calls reuse it until
+  it expires and then self-heal by re-minting.
+- **Server-side rejection is also handled:** if a token passes the local expiry check
+  but the API still returns 401 (revoked, wrong pool), the script re-mints from
+  username/password and retries the POST once.
 
-All three credential values are read from the same repo-root `.env`; a matching real
-environment variable, if present, overrides the `.env` value for that call. These are
-secrets — the script never prints them, and `.env` must stay out of version control. If
-none are set in either place, tell the user to add them to `.env` or export them,
-e.g. (PowerShell) `$env:TICKET_USERNAME="demo@example.com"; $env:TICKET_PASSWORD="..."`.
-The README's "Get a JWT" section shows how to create a demo user with a permanent
-password (a permanent password matters — otherwise Cognito returns a challenge instead
-of a token, and the script will say so).
+So the practical contract is: **as long as `TICKET_USERNAME`/`TICKET_PASSWORD` are set
+and the Cognito user exists, ticket creation just works** — `TICKET_TOKEN` can be empty
+or stale. Configure that user with the **configure-cognito-user** skill (it sets a
+*permanent* password — otherwise Cognito returns a challenge instead of a token, and the
+script will say so).
+
+All values are read from the same repo-root `.env`; a matching real environment
+variable, if present, overrides the `.env` value for that call. These are secrets — the
+script never prints them, and `.env` must stay out of version control. If no credentials
+are set anywhere, tell the user to add them to `.env` or export them, e.g. (PowerShell)
+`$env:TICKET_USERNAME="demo@example.com"; $env:TICKET_PASSWORD="..."`.
 
 ## Common failures and what they mean
 
 - **"no .env found"** — the stack config isn't generated. Run `python scripts/gen_env.py`
   (after a `terraform apply`), or pass `--env-file`.
-- **"no credentials"** — set `TICKET_USERNAME`/`TICKET_PASSWORD` (or `TICKET_TOKEN`).
-- **"401 Unauthorized"** — the token was rejected: expired, wrong user pool, or an
-  `AccessToken` was supplied where an `IdToken` is required. Re-mint via env creds.
+- **"no credentials"** — set `TICKET_USERNAME`/`TICKET_PASSWORD` (or a valid
+  `TICKET_TOKEN`). Note the script auto-mints and refreshes `TICKET_TOKEN`, so you
+  normally only need username/password.
+- **"401 Unauthorized … even after re-minting a fresh token"** — the freshly minted
+  IdToken was still rejected by the API authorizer. That points at a mismatch, not a
+  stale token: wrong `USER_POOL_CLIENT_ID`/`USER_POOL_ID` for this API, or an
+  `AccessToken` where an `IdToken` is required. Re-run `scripts/gen_env.py`.
+- **"no IdToken returned … challenge"** — the Cognito user has a temporary password.
+  Run the **configure-cognito-user** skill to set a permanent one.
 - **"400 validation_error"** — a field is missing/invalid or an extra field leaked in.
   Check `priority` is a valid enum and only the four fields are sent.

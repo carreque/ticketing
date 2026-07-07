@@ -19,6 +19,7 @@ Every issue so far shares a theme worth stating up front:
 | 2026-06-28 | [`local-exec` build provisioner fails on Windows (`'.' is not recognized`)](28-06-26-pathInterpreterIssues.md) | Terraform `lambda.tf` · packaging | ✅ Resolved |
 | 2026-06-28 | [`AccessDeniedException` on `lambda:GetLayerVersion` for the Powertools layer](28-06-26-powertoolsLayerIssue.md) | Terraform `variables.tf`/`lambda.tf` · Lambda layer | ✅ Resolved |
 | 2026-06-28 | [Every authenticated call → 500: Lambda import crash (`No module named 'exceptions'`)](28-06-26-lambdaIssues.md) | `build.py` packaging · handlers | ✅ Resolved |
+| 2026-07-07 | [`local-exec` build provisioner fails on macOS (`exec: "PowerShell": ... not found in $PATH`)](07-07-26-OSCompatibility.md) | Terraform `lambda.tf`/`variables.tf` · packaging | ✅ Resolved |
 
 ## Adding a new issue
 

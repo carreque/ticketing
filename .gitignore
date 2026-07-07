@@ -19,7 +19,6 @@ terraform/dist/
 .terraform.lock.hcl
 *.tfstate
 *.tfstate.*
-*.tfvars
 
 # Secrets / credentials
 .env
